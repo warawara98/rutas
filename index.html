@@ -1,33 +1,244 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Ruta · TAKENOS</title>
   <meta charset="utf-8">
-  <?!= include('Styles'); ?>
-  <!-- SheetJS: lee el Excel de TAKENOS en el navegador (no consume cuotas de Google). -->
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <!-- Mapa: Leaflet (alojado aquí mismo) + imágenes de OpenStreetMap. La navegación abre Google Maps. -->
+  <!-- OpenStreetMap exige saber qué sitio pide el mapa: con "strict-origin" solo recibe
+       https://usuario.github.io/ . El código del enlace va después de "#" y nunca se envía. -->
+  <meta name="referrer" content="strict-origin">
+  <link rel="stylesheet" href="leaflet.css">
+  <script src="leaflet.js"></script>
+  <style>
+    :root { --naranja: #EC9507; --morado: #251832; --borde: #E4E1E9; --texto-2: #6B6475; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #1F1A26; background: #F6F5F8; font-size: 15px; }
+    header { background: var(--morado); color: #fff; padding: 14px 16px; position: sticky; top: 0; z-index: 1000; }
+    header .marca { font-weight: 800; letter-spacing: .4px; font-size: 13px; color: #B9AFC6; }
+    header .marca span { color: var(--naranja); }
+    header h1 { margin: 2px 0 2px; font-size: 20px; }
+    header .sub { font-size: 13px; color: #DCD5E5; }
+    #mapa { height: 46vh; min-height: 260px; }
+    .barra { display: flex; gap: 8px; padding: 10px 12px; background: #fff; border-bottom: 1px solid var(--borde); flex-wrap: wrap; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 0; border-radius: 10px; padding: 10px 14px;
+           font-weight: 700; font-size: 14px; text-decoration: none; cursor: pointer; background: var(--naranja); color: var(--morado); }
+    .btn.sec { background: #fff; border: 1px solid var(--borde); color: var(--morado); }
+    .lista { padding: 10px 12px 40px; }
+    .parada { background: #fff; border: 1px solid var(--borde); border-radius: 12px; padding: 12px; margin-bottom: 10px; display: flex; gap: 12px; }
+    .num { flex: 0 0 34px; height: 34px; border-radius: 50%; background: var(--naranja); color: var(--morado); font-weight: 800;
+           display: flex; align-items: center; justify-content: center; }
+    .num.sin { background: #E4E1E9; }
+    .info { flex: 1; min-width: 0; }
+    .nombre { font-weight: 700; }
+    .dir { margin-top: 2px; }
+    .ref { color: var(--texto-2); font-size: 13px; margin-top: 2px; }
+    .acc { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .acc .btn { padding: 8px 12px; font-size: 13px; }
+    .chip { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; background: #FBF1DE; color: #B7791F; margin-left: 6px; }
+    h2 { font-size: 14px; color: var(--texto-2); margin: 18px 2px 8px; text-transform: uppercase; letter-spacing: .5px; }
+    .pie { color: var(--texto-2); font-size: 12px; text-align: center; padding: 0 16px 30px; }
+    .marcador { background: var(--naranja); color: var(--morado); border: 2px solid #fff; border-radius: 50%; width: 28px; height: 28px;
+                display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+    .estado { padding: 40px 20px; text-align: center; color: var(--texto-2); }
+    .vacio { background: #fff; border: 1px solid var(--borde); border-radius: 12px; padding: 24px; text-align: center; }
+    #pin { display: none; max-width: 340px; margin: 30px auto; padding: 0 16px; text-align: center; }
+    #pin input { font-size: 30px; letter-spacing: 12px; width: 160px; text-align: center; padding: 10px; border: 2px solid var(--borde); border-radius: 12px; margin: 14px 0; }
+    #pin input:focus { outline: none; border-color: var(--naranja); }
+    #pin .error { color: #B42318; font-weight: 700; min-height: 20px; }
+  </style>
 </head>
 <body>
-  <div class="app">
-    <nav class="lateral">
-      <div class="marca">
-        <div class="logo">TAKE<span>NOS</span></div>
-        <div class="sub">DELTAX · Gestión de entregas</div>
+  <header>
+    <div class="marca">TAKE<span>NOS</span> · DELTAX</div>
+    <h1 id="titulo"></h1>
+    <div class="sub" id="sub"></div>
+  </header>
+  <div id="estado" class="estado">Cargando la ruta…</div>
+  <form id="pin" autocomplete="off">
+    <p id="pin-saludo"><b>Ingrese su PIN de repartidor</b></p>
+    <input id="pin-valor" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" aria-label="PIN de 4 dígitos">
+    <div class="error" id="pin-error"></div>
+    <button class="btn" id="pin-btn" type="submit" style="width:100%;margin-top:8px">Ver ruta</button>
+    <p class="pie" style="padding:16px 0 0">El PIN se lo entregó DELTAX en persona. Sin el PIN no se muestran datos de clientes.</p>
+  </form>
+  <div id="contenido" style="display:none">
+  <div id="mapa"></div>
+  <div class="barra">
+    <button class="btn" id="btn-pdf">Descargar constancia (PDF)</button>
+    <button class="btn sec" id="btn-todo">Ver todas en el mapa</button>
+  </div>
+  <div class="lista" id="lista"></div>
+  </div>
+  <div class="pie">Información personal de clientes de TAKENOS. No reenvíe este enlace.</div>
+
+<script>
+/* =====================================================================
+ * Página del repartidor · TAKENOS (DELTAX)
+ * Se aloja en GitHub Pages. Los datos los entrega el Apps Script de TAKENOS
+ * solo si el enlace secreto (?r=...) está vigente.
+ * ===================================================================== */
+
+// Dirección de la implementación "Rutas repartidores" (acceso: Cualquier persona), terminada en /exec.
+const API = 'https://script.google.com/macros/s/AKfycbz7ehDUgtzLGtRPb2-rnTLkSiDzpNU5NZQF5Quc0Fhlvzzxq7caBEg20b7vHdQs3D5IYg/exec';
+
+// El código va después de "#": el navegador no lo envía a GitHub ni a ningún otro servidor.
+const TOKEN = new URLSearchParams(location.hash.replace(/^#/, '')).get('r') || new URLSearchParams(location.search).get('r') || '';
+let D = null;
+// El PIN correcto se recuerda solo en ESTE celular y solo para ESTE enlace, para no pedirlo en cada apertura.
+const CLAVE_PIN = 'tk_pin_' + TOKEN.slice(0, 16);
+let PIN = '';
+try { PIN = localStorage.getItem(CLAVE_PIN) || ''; } catch (e) { PIN = ''; }
+function recordarPin(v) { try { if (v) localStorage.setItem(CLAVE_PIN, v); else localStorage.removeItem(CLAVE_PIN); } catch (e) { /* sin almacenamiento */ } }
+
+async function pedir(formato) {
+  // Sin cookies de Google: así no importa cuántas cuentas tenga el celular.
+  const resp = await fetch(`${API}?formato=${formato}&r=${encodeURIComponent(TOKEN)}&pin=${encodeURIComponent(PIN)}`, { credentials: 'omit', redirect: 'follow' });
+  const texto = await resp.text();
+  try { return JSON.parse(texto); }
+  catch (e) { throw new Error('El servidor de TAKENOS no respondió correctamente. Avise al operador (revisar la configuración del enlace).'); }
+}
+
+function mostrarEstado(msg) {
+  document.getElementById('estado').innerHTML = msg;
+  document.getElementById('estado').style.display = '';
+  document.getElementById('contenido').style.display = 'none';
+  document.getElementById('pin').style.display = 'none';
+}
+
+/** Pide el PIN. Hasta que sea correcto no se recibe ni se muestra ningún dato de clientes. */
+function pedirPin(r) {
+  document.getElementById('estado').style.display = 'none';
+  document.getElementById('contenido').style.display = 'none';
+  const f = document.getElementById('pin');
+  f.style.display = '';
+  document.getElementById('titulo').textContent = 'Ruta de entregas';
+  document.getElementById('sub').textContent = '';
+  if (r.repartidor) document.getElementById('pin-saludo').innerHTML = '<b>Hola ' + esc(r.repartidor) + ', ingrese su PIN de repartidor</b>';
+  document.getElementById('pin-error').textContent = r.error === 'PIN_INCORRECTO'
+    ? 'PIN incorrecto. Le quedan ' + r.restantes + ' intento(s).' : '';
+  const campo = document.getElementById('pin-valor');
+  campo.value = ''; campo.focus();
+  f.onsubmit = async (ev) => {
+    ev.preventDefault();
+    const v = campo.value.trim();
+    if (!/^\d{4}$/.test(v)) { document.getElementById('pin-error').textContent = 'El PIN tiene 4 números.'; return; }
+    PIN = v;
+    document.getElementById('pin-btn').disabled = true;
+    await cargar();
+    document.getElementById('pin-btn').disabled = false;
+  };
+}
+
+function mensajeError(e) {
+  if (e === 'BLOQUEADO') return '<b>Enlace bloqueado.</b><br>Se ingresó un PIN equivocado demasiadas veces. Pida al operador de DELTAX que vuelva a publicar la ruta.';
+  if (e === 'SIN_PIN') return '<b>Falta su PIN.</b><br>Pida al operador de DELTAX que genere su PIN de repartidor.';
+  return '<b>Este enlace ya no está disponible.</b><br>Venció, la ruta se cerró o el enlace se anuló. Pida uno nuevo al operador de DELTAX.';
+}
+
+function esc(v) {
+  return String(v === null || v === undefined ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function enlaceIr(p) {
+  if (p.lat !== null) return `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&travelmode=driving`;
+  if (p.url) return p.url;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.direccion + ', ' + D.departamento + ', Bolivia')}`;
+}
+
+
+function mostrar(datos) {
+D = datos;
+document.getElementById('pin').style.display = 'none';
+document.getElementById('estado').style.display = 'none';
+document.getElementById('contenido').style.display = '';
+document.getElementById('titulo').textContent = D.ruta;
+document.getElementById('sub').textContent =
+  [D.repartidor, D.fecha, D.paradas.length + ' por entregar' + (D.entregadas ? ' · ' + D.entregadas + ' cerradas' : ''), D.vence ? 'enlace válido hasta ' + D.vence : ''].filter(Boolean).join(' · ');
+
+const conCoord = D.paradas.filter(p => p.lat !== null);
+const sinCoord = D.paradas.filter(p => p.lat === null);
+
+// Mapa
+const mapa = L.map('mapa', { zoomControl: true });
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(mapa);
+const marcas = {};
+conCoord.forEach(p => {
+  const icono = L.divIcon({ className: '', html: `<div class="marcador">${p.n}</div>`, iconSize: [28, 28], iconAnchor: [14, 14] });
+  marcas[p.n] = L.marker([p.lat, p.lng], { icon: icono }).addTo(mapa)
+    .bindPopup(`<b>${p.n}. ${esc(p.nombre)}</b><br>${esc(p.direccion)}<br><a href="${esc(enlaceIr(p))}" target="_blank" rel="noopener noreferrer">Ir con Google Maps</a>`);
+});
+function verTodas() {
+  if (conCoord.length) mapa.fitBounds(L.latLngBounds(conCoord.map(p => [p.lat, p.lng])).pad(0.15));
+  else mapa.setView([-16.5, -68.15], 12);
+}
+verTodas();
+document.getElementById('btn-todo').onclick = verTodas;
+
+// Lista
+function tarjeta(p) {
+  return `<div class="parada">
+    <div class="num ${p.lat === null ? 'sin' : ''}">${p.n}</div>
+    <div class="info">
+      <div class="nombre">${esc(p.nombre)}${p.reposicion ? '<span class="chip">Reposición</span>' : ''}</div>
+      <div class="dir">${esc(p.direccion)}</div>
+      ${p.referencia ? `<div class="ref">${esc(p.referencia)}</div>` : ''}
+      <div class="acc">
+        <a class="btn" href="${esc(enlaceIr(p))}" target="_blank" rel="noopener noreferrer">Ir</a>
+        ${p.telefono ? `<a class="btn sec" href="tel:+${esc(p.telefono.length === 8 ? '591' + p.telefono : p.telefono)}">Llamar</a>` : ''}
+        ${p.lat !== null ? `<button class="btn sec" data-n="${p.n}">Ver en el mapa</button>` : ''}
       </div>
-      <ul class="menu" id="menu"></ul>
-      <div class="usuario" id="usuario">Cargando…</div>
-    </nav>
-    <main class="contenido" id="vista"></main>
-  </div>
-
-  <div class="cargando" id="cargando">
-    <div class="caja">
-      <div class="spinner"></div>
-      <div id="cargando-texto">Procesando…</div>
-      <div class="barra" id="cargando-barra" style="display:none"><div></div></div>
     </div>
-  </div>
+  </div>`;
+}
+const lista = document.getElementById('lista');
+lista.innerHTML = D.paradas.length
+  ? conCoord.map(tarjeta).join('') +
+    (sinCoord.length ? `<h2>Sin ubicación exacta (${sinCoord.length})</h2>` + sinCoord.map(tarjeta).join('') : '')
+  : '<div class="vacio"><b>Ruta completada.</b><br>No quedan tarjetas por entregar.</div>';
+lista.querySelectorAll('button[data-n]').forEach(b => b.onclick = () => {
+  const m = marcas[b.dataset.n]; if (!m) return;
+  window.scrollTo({ top: 0, behavior: 'smooth' }); mapa.setView(m.getLatLng(), 17); m.openPopup();
+});
 
-  <?!= include('App'); ?>
+// Constancia
+const btnPdf = document.getElementById('btn-pdf');
+if (!D.constancia) btnPdf.style.display = 'none';
+btnPdf.onclick = async () => {
+  btnPdf.disabled = true; btnPdf.textContent = 'Descargando…';
+  try {
+    const r = await pedir('pdf');
+    if (r.error) throw new Error(r.error === 'SIN_CONSTANCIA' ? 'La constancia aún no está generada.' : r.error === 'BLOQUEADO' ? 'Enlace bloqueado.' : 'Este enlace ya no está disponible.');
+    const bin = atob(r.base64), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    a.download = r.nombre; document.body.appendChild(a); a.click(); a.remove();
+  } catch (e) { alert(e.message || e); }
+  btnPdf.disabled = false; btnPdf.textContent = 'Descargar constancia (PDF)';
+};
+}
+
+let mapaListo = false;
+async function cargar() {
+  try {
+    const datos = await pedir('json');
+    if (datos.error === 'PIN_REQUERIDO' || datos.error === 'PIN_INCORRECTO') { recordarPin(''); return pedirPin(datos); }
+    if (datos.error) { recordarPin(''); return mostrarEstado(mensajeError(datos.error)); }
+    recordarPin(PIN);
+    if (mapaListo) return;
+    mapaListo = true;
+    mostrar(datos);
+  } catch (e) {
+    mostrarEstado('<b>No se pudo cargar la ruta.</b><br>' + String(e.message || e).replace(/</g, '&lt;') + '<br><br>Revise su conexión e intente de nuevo.');
+  }
+}
+
+(function iniciar() {
+  if (!TOKEN) return mostrarEstado('<b>Falta el enlace de la ruta.</b><br>Abra el enlace que le enviaron por WhatsApp.');
+  if (API.indexOf('/exec') < 0) return mostrarEstado('<b>Página sin configurar.</b><br>Falta la dirección del servidor de TAKENOS.');
+  cargar();
+})();
+</script>
 </body>
 </html>
