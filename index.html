@@ -43,7 +43,7 @@
                 display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
     .estado { padding: 40px 20px; text-align: center; color: var(--texto-2); }
     .vacio { background: #fff; border: 1px solid var(--borde); border-radius: 12px; padding: 24px; text-align: center; }
-    #pin { display: none; max-width: 340px; margin: 30px auto; padding: 0 16px; text-align: center; }
+    #pin { max-width: 340px; margin: 30px auto; padding: 0 16px; text-align: center; }
     #pin input { font-size: 30px; letter-spacing: 12px; width: 160px; text-align: center; padding: 10px; border: 2px solid var(--borde); border-radius: 12px; margin: 14px 0; }
     #pin input:focus { outline: none; border-color: var(--naranja); }
     #pin .error { color: #B42318; font-weight: 700; min-height: 20px; }
@@ -56,7 +56,7 @@
     <div class="sub" id="sub"></div>
   </header>
   <div id="estado" class="estado">Cargando la ruta…</div>
-  <form id="pin" autocomplete="off">
+  <form id="pin" autocomplete="off" style="display:none">
     <p id="pin-saludo"><b>Ingrese su PIN de repartidor</b></p>
     <input id="pin-valor" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" aria-label="PIN de 4 dígitos">
     <div class="error" id="pin-error"></div>
